@@ -34,11 +34,12 @@ case "${1:---plan}" in
   for arg in "$@"; do
    [[ $arg != --plan && $arg != --apply ]] || { echo 'Choose --deploy-plan or --deploy without extra mode flags'; exit 2; }
   done
-  for file in deploy.sh image-manifest.py images.json; do fetch "$file"; done
+  for file in deploy.sh image-manifest.py detect-uplink.py images.json; do fetch "$file"; done
   bash -n "$tmp/deploy.sh"
   python3 -c 'import ast,sys; ast.parse(open(sys.argv[1]).read())' "$tmp/image-manifest.py"
+  python3 -c 'import ast,sys; ast.parse(open(sys.argv[1]).read())' "$tmp/detect-uplink.py"
   python3 -m json.tool "$tmp/images.json" >/dev/null
-  for file in deploy.sh image-manifest.py images.json; do mv -- "$tmp/$file" "$file"; done
+  for file in deploy.sh image-manifest.py detect-uplink.py images.json; do mv -- "$tmp/$file" "$file"; done
   bash ./deploy.sh "$mode" "$@"
   ;;
  --plan|--apply)

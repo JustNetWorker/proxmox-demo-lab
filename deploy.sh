@@ -2,8 +2,8 @@
 set -Eeuo pipefail
 umask 077
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-mode=plan; base=200; bridgebase=201; storage=local-lvm; uplink=vmbr0; image_dir=/var/lib/vz/demo-images
-usage() { echo 'deploy.sh [--plan|--apply] [--base-id 200] [--bridge-base 201] [--storage local-lvm] [--uplink vmbr0] [--image-dir /var/lib/vz/demo-images]'; }
+mode=plan; base=200; bridgebase=201; storage=local-lvm; uplink=auto; image_dir=/var/lib/vz/demo-images
+usage() { echo 'deploy.sh [--plan|--apply] [--base-id 200] [--bridge-base 201] [--storage local-lvm] [--uplink auto|vmbrN] [--image-dir /var/lib/vz/demo-images]'; }
 fail() { echo "ERROR: $*" >&2; exit 1; }
 while (($#)); do
  case "$1" in
@@ -17,7 +17,13 @@ while (($#)); do
 done
 [[ $base =~ ^[1-9][0-9]*$ && $bridgebase =~ ^[1-9][0-9]*$ ]] || fail 'Numeric IDs required'
 ((base>=100 && base<=999999900 && bridgebase<=9991)) || fail 'IDs out of range'
-[[ $storage =~ ^[A-Za-z][A-Za-z0-9_-]*$ && $uplink =~ ^vmbr[0-9]+$ ]] || fail 'Invalid storage or uplink'
+[[ $storage =~ ^[A-Za-z][A-Za-z0-9_-]*$ && ( $uplink == auto || $uplink =~ ^vmbr[0-9]+$ ) ]] || fail 'Invalid storage or uplink'
+if [[ $uplink == auto ]]; then
+ command -v ip >/dev/null || fail 'iproute2 is required for automatic uplink detection'
+ uplink=$(python3 "$here/detect-uplink.py") || fail 'Choose a bridge explicitly with --uplink vmbrN'
+ [[ -d /sys/class/net/$uplink/bridge ]] || fail "Detected uplink $uplink is not an active Linux bridge"
+ echo "Detected host IPv4 uplink: $uplink -> ISP net0"
+fi
 roles=(ISP HQ-RTR HQ-SW HQ-SRV HQ-CLI BR-RTR BR-FW BR-SRV)
 ram=(1024 2048 1024 2048 2048 2048 6144 2048)
 cores=(1 2 1 1 2 2 4 1)
@@ -35,6 +41,7 @@ done
 echo 'All operating systems: import installed standalone qcow2 images; no ISO installation.'
 echo 'ALT: SeaBIOS / VirtIO SCSI. Ideco: q35 / UEFI with the exported EFI disk.'
 echo 'VM names and hardware are configured; guest passwords and module settings come from your images.'
+echo 'ISP net0 uses the existing uplink bridge. Host IP/gateway are NOT copied; configure DHCP or a unique static address inside ISP.'
 echo 'All 8 VMs need 18 GiB RAM plus host memory; they will NOT all start automatically.'
 [[ $mode == apply ]] || { echo 'Plan only; nothing downloaded or changed.'; exit 0; }
 [[ $EUID == 0 ]] || fail 'Run in Proxmox Shell as root'
