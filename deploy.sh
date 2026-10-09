@@ -81,16 +81,22 @@ python3 -m venv "$here/.venv"
 "$here/.venv/bin/python" "$here/image-manifest.py" download "$here/images.json" "$image_dir" "$state"
 # Format, backing-chain and integrity checks complete before bridges or VMs are created.
 python3 "$here/image-manifest.py" inspect "$here/images.json" "$image_dir" "$state"
-required_kb=$(python3 - "$state/verified.json" <<'PYC'
-import json,sys
-x=json.load(open(sys.argv[1]))
-kinds=['jeos','router','jeos','server','cli','router','ideco','server','ideco_efi']
-print(sum(max(x[k]['virtual_size'], 10*1024**3) if k == 'router' else x[k]['virtual_size'] for k in kinds)//1024)
-PYC
-)
-available_kb=$(pvesm status --storage "$storage" | awk 'NR>1 && $3=="active" {print $6}')
+storage_row=$(pvesm status --storage "$storage" | awk 'NR>1 && $3=="active" {print $2, $6}')
+read -r storage_type available_kb <<< "$storage_row"
 [[ $available_kb =~ ^[0-9]+$ ]] || fail 'Cannot determine available disk storage capacity'
-((available_kb>=required_kb)) || fail 'Not enough disk storage for the imported virtual disk capacities'
+capacity=$(python3 "$here/image-manifest.py" capacity "$state/verified.json" "$storage_type")
+printf '%s\n' "$capacity" > "$state/capacity.json"
+required_kb=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["required_kb"])' "$capacity")
+python3 - "$capacity" "$available_kb" "$storage_type" <<'PYC'
+import json,sys
+x=json.loads(sys.argv[1]); g=1024**3
+print('Storage %s: %.1f GiB available; estimated import %.1f GiB + %.1f GiB reserve; virtual capacity %.1f GiB' %
+      (sys.argv[3],int(sys.argv[2])*1024/g,x['initial_bytes']/g,x['reserve_bytes']/g,x['virtual_bytes']/g))
+PYC
+((available_kb>=required_kb)) || fail "Not enough disk space: need $required_kb KiB including reserve, available $available_kb KiB. Expand the target storage or use --storage with a larger pool."
+if [[ $storage_type == lvmthin ]]; then
+ echo 'Thin provisioning: pool usage grows as guests write data. Monitor Data% and free space.'
+fi
 for n in {1..9}; do
  b=$(br "$n")
  printf '\n# proxmox-demo-lab %s\nauto %s\niface %s inet manual\n    bridge-ports none\n    bridge-stp off\n    bridge-fd 0\n' "$base" "$b" "$b" >> /etc/network/interfaces
