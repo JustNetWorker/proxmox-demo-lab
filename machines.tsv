@@ -1,0 +1,9 @@
+# ROLE VMID BRIDGES_IN_NET_ORDER
+ISP 101 vmbr0,vmbr1,vmbr2
+HQ-RTR 100 vmbr8,vmbr1,vmbr3
+HQ-SW 104 vmbr3,vmbr4,vmbr5
+HQ-SRV 102 vmbr4
+HQ-CLI 103 vmbr5
+BR-RTR 108 vmbr9,vmbr2,vmbr6
+BR-FW 106 vmbr7,vmbr6
+BR-SRV 105 vmbr7
