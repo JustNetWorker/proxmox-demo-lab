@@ -21,7 +21,9 @@
   },
   "ideco_efi": {
     "id": "11ymr6_LWPgYvcCet9iuB3itVQxNcaalI",
-    "file": "ideco-efi.qcow2"
+    "file": "ideco-efi.qcow2",
+    "sha256": "29ab6a37d784d8e1ce3f164e59b4c21f5a2cf092e92fa26347b8df6917228a76",
+    "bytes": 917504
   },
   "ideco_config": {
     "id": "1SAKxKa21h_Di0S0BK1v2bNWVHgxWiLn-",

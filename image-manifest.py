@@ -62,7 +62,12 @@ def download(manifest, root, state):
         stamp = Path(str(path) + '.demo.json')
         if path.exists():
             if not stamp.exists():
-                raise ValueError(f'Unknown existing cache file: {path}; move it aside first')
+                # Accept a manually copied file only when it matches the published digest.
+                expected_hash = item.get('sha256')
+                if not expected_hash or digest(path) != expected_hash:
+                    raise ValueError(f'Unknown existing cache file: {path}; no matching published checksum')
+                stamp.write_text(json.dumps({'id': item['id'], 'sha256': expected_hash}) + '\n')
+                print('Verified manually supplied file: ' + path.name)
             saved = json.loads(stamp.read_text())
             if saved.get('id') != item['id'] or saved.get('sha256') != digest(path):
                 raise ValueError(f'Cache identity or checksum mismatch: {path}')
@@ -72,8 +77,18 @@ def download(manifest, root, state):
             if expected and shutil.disk_usage(root).free < expected + 1024**3:
                 raise ValueError(f'Not enough cache space for {path.name}')
             partial = Path(str(path) + '.demo-download')
-            if gdown.download(id=item['id'], output=str(partial), quiet=False,
-                              resume=True, use_cookies=False) is None:
+            print('Downloading: ' + path.name, flush=True)
+            try:
+                result = gdown.download(id=item['id'], output=str(partial), quiet=False,
+                                        resume=True, use_cookies=False)
+            except Exception as error:
+                url = 'https://drive.google.com/file/d/' + item['id'] + '/view'
+                hint = (' A local copy can be placed at ' + str(path) +
+                        '; its published SHA256 will be checked.') if item.get('sha256') else ''
+                raise ValueError('Google Drive could not download ' + path.name +
+                                 ' (' + type(error).__name__ + '). Check public access at ' + url +
+                                 ' or retry later. Existing completed downloads are retained.' + hint) from None
+            if result is None:
                 raise ValueError('Google Drive download failed: ' + path.name)
             if not partial.exists() or partial.stat().st_size == 0:
                 raise ValueError('Empty download: ' + path.name)
