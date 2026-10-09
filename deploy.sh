@@ -2,8 +2,8 @@
 set -Eeuo pipefail
 umask 077
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-mode=plan; base=200; bridgebase=201; storage=local-lvm; uplink=auto; image_dir=/var/lib/vz/demo-images
-usage() { echo 'deploy.sh [--plan|--apply] [--base-id 200] [--bridge-base 201] [--storage local-lvm] [--uplink auto|vmbrN] [--image-dir /var/lib/vz/demo-images]'; }
+mode=plan; base=auto; bridgebase=auto; storage=local-lvm; uplink=auto; image_dir=/var/lib/vz/demo-images
+usage() { echo 'deploy.sh [--plan|--apply] [--base-id auto|200] [--bridge-base auto|201] [--storage local-lvm] [--uplink auto|vmbrN] [--image-dir /var/lib/vz/demo-images]'; }
 fail() { echo "ERROR: $*" >&2; exit 1; }
 while (($#)); do
  case "$1" in
@@ -15,9 +15,23 @@ while (($#)); do
   --help) usage; exit 0;; *) usage; fail "Unknown option $1";;
  esac
 done
-[[ $base =~ ^[1-9][0-9]*$ && $bridgebase =~ ^[1-9][0-9]*$ ]] || fail 'Numeric IDs required'
-((base>=100 && base<=999999900 && bridgebase<=9991)) || fail 'IDs out of range'
+[[ ( $base == auto || $base =~ ^[1-9][0-9]{0,8}$ ) && ( $bridgebase == auto || $bridgebase =~ ^[1-9][0-9]{0,3}$ ) ]] || fail 'Numeric IDs required'
+[[ $base == auto ]] || ((base>=100 && base<=999999992)) || fail 'VMIDs out of range'
+[[ $bridgebase == auto ]] || ((bridgebase<=9991)) || fail 'Bridge IDs out of range'
 [[ $storage =~ ^[A-Za-z][A-Za-z0-9_-]*$ && ( $uplink == auto || $uplink =~ ^vmbr[0-9]+$ ) ]] || fail 'Invalid storage or uplink'
+if [[ $mode == apply ]]; then
+[[ $EUID == 0 ]] || fail 'Run in Proxmox Shell as root'
+for cmd in qm pvesm pvesh qemu-img python3 curl ifup flock; do
+ command -v "$cmd" >/dev/null || fail "Install prerequisites first: apt-get install python3-venv ifupdown2 (missing $cmd)"
+done
+exec 9>/run/lock/proxmox-demo-deploy.lock
+flock -n 9 || fail 'Another deploy is running'
+fi
+if [[ $base == auto || $bridgebase == auto ]]; then
+ selected=$(python3 "$here/select-ranges.py" "$base" "$bridgebase") || fail 'Cannot choose free VMID/bridge ranges'
+ read -r base bridgebase <<< "$selected"
+ echo "Selected free ranges: VMIDs ${base}–$((base+7)); bridges vmbr${bridgebase}–vmbr$((bridgebase+8))"
+fi
 if [[ $uplink == auto ]]; then
  command -v ip >/dev/null || fail 'iproute2 is required for automatic uplink detection'
  uplink=$(python3 "$here/detect-uplink.py") || fail 'Choose a bridge explicitly with --uplink vmbrN'
@@ -34,9 +48,9 @@ nics=("$uplink,$(br 1),$(br 2)" "$(br 8),$(br 1),$(br 3)" "$(br 3),$(br 4),$(br 
 [[ ,$(IFS=,; echo "${nics[*]}"), == *",$uplink,"* ]] || fail 'Invalid uplink'
 for n in {1..9}; do [[ $(br "$n") != "$uplink" ]] || fail 'Bridge range overlaps uplink'; done
 printf 'NEW LAB: storage=%s uplink=%s\n' "$storage" "$uplink"
-printf '%-7s %-8s %-7s %-7s %-7s %s\n' VMID NAME RAM-MB CORES DISK-GB NETWORKS
+printf '%-7s %-24s %-7s %-7s %-7s %s\n' VMID NAME RAM-MB CORES DISK-GB NETWORKS
 for i in "${!roles[@]}"; do
- printf '%-7s %-8s %-7s %-7s %-7s %s\n' "$((base+i))" "${roles[i]}" "${ram[i]}" "${cores[i]}" "${disks[i]}" "${nics[i]}"
+ printf '%-7s %-24s %-7s %-7s %-7s %s\n' "$((base+i))" "${roles[i]}" "${ram[i]}" "${cores[i]}" "${disks[i]}" "${nics[i]}"
 done
 echo 'All operating systems: import installed standalone qcow2 images; no ISO installation.'
 echo 'ALT: SeaBIOS / VirtIO SCSI. Ideco: q35 / UEFI with the exported EFI disk.'
@@ -44,12 +58,6 @@ echo 'VM names and hardware are configured; guest passwords and module settings 
 echo 'ISP net0 uses the existing uplink bridge. Host IP/gateway are NOT copied; configure DHCP or a unique static address inside ISP.'
 echo 'All 8 VMs need 18 GiB RAM plus host memory; they will NOT all start automatically.'
 [[ $mode == apply ]] || { echo 'Plan only; nothing downloaded or changed.'; exit 0; }
-[[ $EUID == 0 ]] || fail 'Run in Proxmox Shell as root'
-for cmd in qm pvesm pvesh qemu-img python3 curl ifup flock; do
- command -v "$cmd" >/dev/null || fail "Install prerequisites first: apt-get install python3-venv ifupdown2 (missing $cmd)"
-done
-exec 9>/run/lock/proxmox-demo-deploy.lock
-flock -n 9 || fail 'Another deploy is running'
 [[ -d /sys/class/net/$uplink/bridge ]] || fail "Uplink $uplink is not an active bridge"
 [[ ! -e /etc/network/interfaces.new ]] || fail 'Apply or discard pending network changes first'
 [[ -f /etc/network/interfaces && ! -L /etc/network/interfaces ]] || fail 'Unsupported network configuration'
@@ -122,9 +130,9 @@ import_volume() {
  printf '%s' "$v"
 }
 for i in "${!roles[@]}"; do
- id=$((base+i)); role=${roles[i]}; kind=${kinds[i]}
- qm create "$id" --name "$role" --memory "${ram[i]}" --balloon 0 --cores "${cores[i]}" --sockets 1 --cpu host --ostype l26 --onboot 0 --description "proxmox-demo-lab: imported OS and hardware; journal $state"
- printf '%s\t%s\n' "$id" "$role" >> "$state/created.tsv"
+ id=$((base+i)); role=${roles[i]}; kind=${kinds[i]}; vm_name=$role
+ qm create "$id" --name "$vm_name" --memory "${ram[i]}" --balloon 0 --cores "${cores[i]}" --sockets 1 --cpu host --ostype l26 --onboot 0 --description "proxmox-demo-lab: imported OS and hardware; journal $state"
+ printf '%s\t%s\n' "$id" "$vm_name" >> "$state/created.tsv"
  model=virtio; [[ $kind != router ]] || model=e1000
  IFS=, read -ra bridges <<< "${nics[i]}"
  for n in "${!bridges[@]}"; do qm set "$id" "--net$n" "$model,bridge=${bridges[n]},firewall=0"; done
