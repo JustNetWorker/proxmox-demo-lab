@@ -11,16 +11,17 @@ import uuid
 from pathlib import Path
 
 KINDS = {'jeos', 'server', 'cli', 'router', 'ideco', 'ideco_efi', 'ideco_config'}
+ROLE_KINDS = {'isp', 'hq_rtr', 'hq_sw', 'hq_srv', 'hq_cli', 'br_rtr', 'br_fw', 'br_srv', 'br_fw_efi', 'br_fw_config'}
 
 def load_manifest(path):
     data = json.loads(Path(path).read_text())
-    if set(data) != KINDS:
-        raise ValueError('Manifest must contain exactly: ' + ', '.join(sorted(KINDS)))
+    if set(data) not in (KINDS, ROLE_KINDS):
+        raise ValueError('Manifest must contain either the base image keys or all ten module image keys')
     for kind, item in data.items():
         if not isinstance(item, dict) or not re.fullmatch(r'[A-Za-z0-9_-]{10,}', item.get('id') or ''):
             raise ValueError(f'{kind}: Google Drive upload/link is not ready in images.json')
         filename = item.get('file', '')
-        suffix = '.txt' if kind == 'ideco_config' else '.qcow2'
+        suffix = '.txt' if kind.endswith('_config') else '.qcow2'
         if not re.fullmatch(r'[A-Za-z0-9_.-]+', filename) or not filename.endswith(suffix):
             raise ValueError(f'{kind}: invalid filename')
         if item.get('sha256') and not re.fullmatch(r'[0-9a-f]{64}', item['sha256']):
@@ -126,8 +127,10 @@ def capacity(path, storage_type):
     verified = json.loads(Path(path).read_text())
     kinds = ['jeos', 'router', 'jeos', 'server', 'cli', 'router',
              'ideco', 'server', 'ideco_efi']
+    if set(verified) == ROLE_KINDS:
+        kinds = ['isp', 'hq_rtr', 'hq_sw', 'hq_srv', 'hq_cli', 'br_rtr', 'br_fw', 'br_srv', 'br_fw_efi']
     virtual = sum(max(verified[k]['virtual_size'], 10*1024**3)
-                  if k == 'router' else verified[k]['virtual_size'] for k in kinds)
+                  if k in ('router', 'hq_rtr', 'br_rtr') else verified[k]['virtual_size'] for k in kinds)
     if storage_type == 'lvmthin':
         initial = sum(verified[k]['allocated_bytes'] for k in kinds)
         reserve = max(10*1024**3, (initial+3)//4)
@@ -143,7 +146,7 @@ def inspect(manifest, root, state):
     verified = {}
     for kind, item in manifest.items():
         path = root / item['file']
-        if kind == 'ideco_config':
+        if kind.endswith('_config'):
             identity(path)
             size = 0
             allocated = 0
@@ -153,9 +156,9 @@ def inspect(manifest, root, state):
                 raise ValueError(f'{kind}: standalone, unencrypted qcow2 required')
             subprocess.run(['qemu-img', 'check', str(path)], check=True)
             size = data['virtual-size']
-            if kind == 'ideco_efi' and not 1024**2 <= size <= 16 * 1024**2:
+            if kind.endswith('_efi') and not 1024**2 <= size <= 16 * 1024**2:
                 raise ValueError('Unexpected EFI virtual disk size')
-            if kind != 'ideco_efi' and size < 1024**3:
+            if not kind.endswith('_efi') and size < 1024**3:
                 raise ValueError(f'{kind}: unexpectedly small system disk')
             allocated = allocated_bytes(path)
         verified[kind] = {'path': str(path.resolve()), 'virtual_size': size,
@@ -172,6 +175,9 @@ if __name__ == '__main__':
         else:
             manifest = load_manifest(sys.argv[2])
             if command == 'validate':
+                if len(sys.argv) > 3:
+                    expected = KINDS if sys.argv[3] == 'base' else ROLE_KINDS
+                    if set(manifest) != expected: raise ValueError('Manifest keys do not match the chosen profile')
                 print('Manifest ready')
             elif command in ('download', 'inspect'):
                 globals()[command](manifest, Path(sys.argv[3]), Path(sys.argv[4]))

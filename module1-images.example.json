@@ -1,0 +1,42 @@
+{
+  "br_fw": {
+    "id": null,
+    "file": "br-fw.qcow2"
+  },
+  "br_fw_config": {
+    "id": null,
+    "file": "br-fw-config.txt"
+  },
+  "br_fw_efi": {
+    "id": null,
+    "file": "br-fw-efi.qcow2"
+  },
+  "br_rtr": {
+    "id": null,
+    "file": "br-rtr.qcow2"
+  },
+  "br_srv": {
+    "id": null,
+    "file": "br-srv.qcow2"
+  },
+  "hq_cli": {
+    "id": null,
+    "file": "hq-cli.qcow2"
+  },
+  "hq_rtr": {
+    "id": null,
+    "file": "hq-rtr.qcow2"
+  },
+  "hq_srv": {
+    "id": null,
+    "file": "hq-srv.qcow2"
+  },
+  "hq_sw": {
+    "id": null,
+    "file": "hq-sw.qcow2"
+  },
+  "isp": {
+    "id": null,
+    "file": "isp.qcow2"
+  }
+}

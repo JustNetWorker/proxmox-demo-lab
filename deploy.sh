@@ -2,15 +2,15 @@
 set -Eeuo pipefail
 umask 077
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-mode=plan; base=auto; bridgebase=auto; storage=local-lvm; uplink=auto; image_dir=/var/lib/vz/demo-images
-usage() { echo 'deploy.sh [--plan|--apply] [--base-id auto|200] [--bridge-base auto|201] [--storage local-lvm] [--uplink auto|vmbrN] [--image-dir /var/lib/vz/demo-images]'; }
+mode=plan; base=auto; bridgebase=auto; storage=local-lvm; uplink=auto; image_dir=/var/lib/vz/demo-images; profile=base
+usage() { echo 'deploy.sh [--plan|--apply] [--base-id auto|200] [--bridge-base auto|201] [--storage local-lvm] [--uplink auto|vmbrN] [--image-dir /var/lib/vz/demo-images] [--profile base|module1]'; }
 fail() { echo "ERROR: $*" >&2; exit 1; }
 while (($#)); do
  case "$1" in
   --plan) mode=plan; shift;; --apply) mode=apply; shift;;
-  --base-id|--bridge-base|--storage|--uplink|--image-dir)
+  --base-id|--bridge-base|--storage|--uplink|--image-dir|--profile)
    (($#>=2)) || fail "Missing value for $1"
-   case "$1" in --base-id) base=$2;; --bridge-base) bridgebase=$2;; --storage) storage=$2;; --uplink) uplink=$2;; --image-dir) image_dir=$2;; esac
+   case "$1" in --base-id) base=$2;; --bridge-base) bridgebase=$2;; --storage) storage=$2;; --uplink) uplink=$2;; --image-dir) image_dir=$2;; --profile) profile=$2;; esac
    shift 2;;
   --help) usage; exit 0;; *) usage; fail "Unknown option $1";;
  esac
@@ -19,6 +19,14 @@ done
 [[ $base == auto ]] || ((base>=100 && base<=999999992)) || fail 'VMIDs out of range'
 [[ $bridgebase == auto ]] || ((bridgebase<=9991)) || fail 'Bridge IDs out of range'
 [[ $storage =~ ^[A-Za-z][A-Za-z0-9_-]*$ && ( $uplink == auto || $uplink =~ ^vmbr[0-9]+$ ) ]] || fail 'Invalid storage or uplink'
+[[ $profile == base || $profile == module1 ]] || fail 'Unknown profile'
+manifest=$here/images.json
+if [[ $profile == module1 ]]; then
+ manifest=$here/module1-images.json
+ [[ -f $manifest ]] || fail 'Module 1 images are not configured. Fill module1-images.json using module1-images.example.json first.'
+ image_dir=$image_dir/module1
+ python3 "$here/image-manifest.py" validate "$manifest" "$profile"
+fi
 if [[ $mode == apply ]]; then
 [[ $EUID == 0 ]] || fail 'Run in Proxmox Shell as root'
 for cmd in qm pvesm pvesh qemu-img python3 curl ifup flock; do
@@ -47,7 +55,7 @@ br() { echo "vmbr$((bridgebase+$1-1))"; }
 nics=("$uplink,$(br 1),$(br 2)" "$(br 8),$(br 1),$(br 3)" "$(br 3),$(br 4),$(br 5)" "$(br 4)" "$(br 5)" "$(br 9),$(br 2),$(br 6)" "$(br 7),$(br 6)" "$(br 7)")
 [[ ,$(IFS=,; echo "${nics[*]}"), == *",$uplink,"* ]] || fail 'Invalid uplink'
 for n in {1..9}; do [[ $(br "$n") != "$uplink" ]] || fail 'Bridge range overlaps uplink'; done
-printf 'NEW LAB: storage=%s uplink=%s\n' "$storage" "$uplink"
+printf 'NEW LAB: profile=%s storage=%s uplink=%s\n' "$profile" "$storage" "$uplink"
 printf '%-7s %-24s %-7s %-7s %-7s %s\n' VMID NAME RAM-MB CORES DISK-GB NETWORKS
 for i in "${!roles[@]}"; do
  printf '%-7s %-24s %-7s %-7s %-7s %s\n' "$((base+i))" "${roles[i]}" "${ram[i]}" "${cores[i]}" "${disks[i]}" "${nics[i]}"
@@ -78,24 +86,25 @@ done
 pvesm status --storage "$storage" | awk 'NR>1 && $3=="active" {ok=1} END {exit !ok}' || fail 'Disk storage unavailable'
 # Validate the manifest before downloading or changing the node. Missing uploads fail here.
 [[ $image_dir == /* && $image_dir != / ]] || fail 'image-dir must be an absolute directory other than /'
-python3 "$here/image-manifest.py" validate "$here/images.json"
+python3 "$here/image-manifest.py" validate "$manifest" "$profile"
 mkdir -p -- "$image_dir"
 [[ -w $image_dir ]] || fail 'Image cache is not writable'
 state=$(mktemp -d /root/demo-deploy.XXXXXXXX)
 log=$state/deploy.log
 exec > >(tee -a "$log") 2>&1
 cp -a /etc/network/interfaces "$state/interfaces.before"
+python3 "$here/lab-manager.py" init --journal "$state" --profile "$profile" --image-dir "$image_dir"
 echo "Deployment journal: $state; partial results are retained on failure."
-trap 'code=$?; echo "FAILED ($code) at line $LINENO. Read $log. New lab may be partial."; exit "$code"' ERR
+trap 'code=$?; if [[ -n ${id:-} ]]; then python3 "$here/lab-manager.py" record-vm --journal "$state" --vmid "$id" || true; fi; echo "FAILED ($code) at line $LINENO. Read $log. New lab may be partial."; exit "$code"' ERR
 if ! dpkg-query -W -f='${Status}' python3-venv 2>/dev/null | grep -q 'install ok installed'; then
  apt-get update
  apt-get install -y python3-venv
 fi
 python3 -m venv "$here/.venv"
 "$here/.venv/bin/pip" install 'gdown==6.4.2'
-"$here/.venv/bin/python" "$here/image-manifest.py" download "$here/images.json" "$image_dir" "$state"
+"$here/.venv/bin/python" "$here/image-manifest.py" download "$manifest" "$image_dir" "$state"
 # Format, backing-chain and integrity checks complete before bridges or VMs are created.
-python3 "$here/image-manifest.py" inspect "$here/images.json" "$image_dir" "$state"
+python3 "$here/image-manifest.py" inspect "$manifest" "$image_dir" "$state"
 storage_row=$(pvesm status --storage "$storage" | awk 'NR>1 && $3=="active" {print $2, $6}')
 read -r storage_type available_kb <<< "$storage_row"
 [[ $available_kb =~ ^[0-9]+$ ]] || fail 'Cannot determine available disk storage capacity'
@@ -114,7 +123,9 @@ if [[ $storage_type == lvmthin ]]; then
 fi
 for n in {1..9}; do
  b=$(br "$n")
- printf '\n# proxmox-demo-lab %s\nauto %s\niface %s inet manual\n    bridge-ports none\n    bridge-stp off\n    bridge-fd 0\n' "$base" "$b" "$b" >> /etc/network/interfaces
+ printf '\n# proxmox-demo-lab %s\nauto %s\niface %s inet manual\n    bridge-ports none\n    bridge-stp off\n    bridge-fd 0\n' "$base" "$b" "$b" > "$state/$b.block"
+ cat "$state/$b.block" >> /etc/network/interfaces
+ python3 "$here/lab-manager.py" record-bridge --journal "$state" --bridge "$b" --block-file "$state/$b.block"
  ifup "$b"
 done
 image_path() { python3 - "$state/verified.json" "$1" <<'PYC'
@@ -131,31 +142,42 @@ import_volume() {
 }
 for i in "${!roles[@]}"; do
  id=$((base+i)); role=${roles[i]}; kind=${kinds[i]}; vm_name=$role
- qm create "$id" --name "$vm_name" --memory "${ram[i]}" --balloon 0 --cores "${cores[i]}" --sockets 1 --cpu host --ostype l26 --onboot 0 --description "proxmox-demo-lab: imported OS and hardware; journal $state"
+ qm create "$id" --name "$vm_name" --memory "${ram[i]}" --balloon 0 --cores "${cores[i]}" --sockets 1 --cpu host --ostype l26 --onboot 0 --description "proxmox-demo-lab: journal $state"
+ python3 "$here/lab-manager.py" record-vm --journal "$state" --vmid "$id"
  printf '%s\t%s\n' "$id" "$vm_name" >> "$state/created.tsv"
  model=virtio; [[ $kind != router ]] || model=e1000
  IFS=, read -ra bridges <<< "${nics[i]}"
  for n in "${!bridges[@]}"; do qm set "$id" "--net$n" "$model,bridge=${bridges[n]},firewall=0"; done
- image=$(image_path "$kind")
+ image_kind=$kind
+ if [[ $profile == module1 ]]; then image_kind=$(printf '%s' "$role" | tr '[:upper:]-' '[:lower:]_'); fi
+ image=$(image_path "$image_kind")
  volume=$(import_volume "$id" "$image")
+ python3 "$here/lab-manager.py" record-vm --journal "$state" --vmid "$id"
  if [[ $kind == router ]]; then
   qm set "$id" --sata0 "$volume" --boot order=sata0
   size=$(qemu-img info --output=json "$image" | python3 -c 'import json,sys;print(json.load(sys.stdin)["virtual-size"])')
   ((size>=10737418240)) || qm resize "$id" sata0 10G
  elif [[ $kind == ideco ]]; then
   qm set "$id" --bios ovmf --machine q35 --scsihw virtio-scsi-single --scsi0 "$volume,iothread=1" --boot order=scsi0
-  efivolume=$(import_volume "$id" "$(image_path ideco_efi)")
+  efi_kind=ideco_efi; config_kind=ideco_config
+  if [[ $profile == module1 ]]; then efi_kind=br_fw_efi; config_kind=br_fw_config; fi
+  efivolume=$(import_volume "$id" "$(image_path "$efi_kind")")
+  python3 "$here/lab-manager.py" record-vm --journal "$state" --vmid "$id"
   qm set "$id" --efidisk0 "$efivolume,efitype=4m,pre-enrolled-keys=0"
   # Preserve only known device identity fields; never execute the exported config.
   identity=()
-  while IFS= read -r field; do identity+=("$field"); done < <(python3 "$here/image-manifest.py" identity "$(image_path ideco_config)")
+  identity_text=$(python3 "$here/image-manifest.py" identity "$(image_path "$config_kind")")
+  while IFS= read -r field; do identity+=("$field"); done <<< "$identity_text"
   if [[ -n ${identity[0]:-} ]]; then qm set "$id" --smbios1 "uuid=${identity[0]}"; fi
   if [[ -n ${identity[1]:-} ]]; then qm set "$id" --net0 "virtio=${identity[1]},bridge=${bridges[0]},firewall=0"; fi
  else
   qm set "$id" --bios seabios --scsihw virtio-scsi-single --scsi0 "$volume,iothread=1" --serial0 socket --boot order=scsi0
  fi
+ python3 "$here/lab-manager.py" record-vm --journal "$state" --vmid "$id"
 done
+python3 "$here/lab-manager.py" finish --journal "$state"
 echo "Finished: VM IDs ${base}–$((base+7)). All machines are stopped."
 echo 'Guest hostnames, IP addresses, credentials and exam-module services are NOT changed by this hardware importer.'
 echo 'Ideco licensing must be checked in the restored VM; its original EFI and identity were preserved.'
 echo "Journal: $state"
+echo "Manage this lab: bash /root/demo-bootstrap.sh --menu (check, snapshots, delete)."
