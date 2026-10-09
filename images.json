@@ -1,7 +1,30 @@
 {
-  "jeos": {"id":"18O2t9kRcRK79MK4lqTnUt2TMIIFbyLZC", "file":"alt-p11-jeos-systemd-20260912-x86_64.iso"},
-  "server": {"id":"1cL0fXiKHRZtoVK-0CiJBfCHSi_J9tLk6", "file":"alt-server-11.0-x86_64.iso"},
-  "cli": {"id":"1RpqQfIcI8IvfHl6xuor56SwTvlHKW4Ev", "file":"alt-workstation-11.1-x86_64.iso"},
-  "router": {"id":"1U43UxeD4gfhAdyfKjaSkowGRwvlUWgWX", "file":"EcoRouterOS.qcow2"},
-  "ideco": {"id":"1gYXfj2f6TDsd3hiSe3PYm_TbJHcSTnVb", "file":"ideco-ngfw-23-1-126-release.iso"}
+  "jeos": {
+    "id": "1C9enJgehyHtHXaS24YbetS15XcBRw828",
+    "file": "alt-jeos.qcow2"
+  },
+  "server": {
+    "id": "1Rbcs3KTGyPzcv03XI1-JRqbwUXVZOMpB",
+    "file": "alt-server.qcow2"
+  },
+  "cli": {
+    "id": "1r1-1T-cfWedwYU8Vmhbg_fpy0QxGXOXh",
+    "file": "alt-workstation.qcow2"
+  },
+  "router": {
+    "id": null,
+    "file": "EcoRouterOS.qcow2"
+  },
+  "ideco": {
+    "id": "11ynfw3ZC8HlGiYDC1HgJ6FswQQ53v_6g",
+    "file": "ideco.qcow2"
+  },
+  "ideco_efi": {
+    "id": "11ymr6_LWPgYvcCet9iuB3itVQxNcaalI",
+    "file": "ideco-efi.qcow2"
+  },
+  "ideco_config": {
+    "id": "1SAKxKa21h_Di0S0BK1v2bNWVHgxWiLn-",
+    "file": "ideco-config.txt"
+  }
 }
