@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Download and inspect user-supplied disk images; exported configs are data only."""
+import importlib.util
 import hashlib
 import json
 import os
@@ -11,15 +12,31 @@ import uuid
 from pathlib import Path
 
 KINDS = {'jeos', 'server', 'cli', 'router', 'ideco', 'ideco_efi', 'ideco_config'}
+MODULE2_ROLES = {'isp', 'hq_rtr', 'hq_sw', 'hq_srv', 'hq_cli', 'br_rtr', 'br_fw', 'br_srv'}
+spec = importlib.util.spec_from_file_location('hardware', Path(__file__).with_name('hardware-profile.py'))
+hardware = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(hardware)
+
 ROLE_KINDS = {'isp', 'hq_rtr', 'hq_sw', 'hq_srv', 'hq_cli', 'br_rtr', 'br_fw', 'br_srv', 'br_fw_efi', 'br_fw_config'}
 
 def load_manifest(path):
     data = json.loads(Path(path).read_text())
-    if set(data) not in (KINDS, ROLE_KINDS):
-        raise ValueError('Manifest must contain either the base image keys or all ten module image keys')
+    module2 = set(data) in (MODULE2_ROLES, MODULE2_ROLES | {'br_fw_efi'})
+    if set(data) not in (KINDS, ROLE_KINDS) and not module2:
+        raise ValueError('Manifest must contain base, legacy module1 or module2 image keys')
     for kind, item in data.items():
         if not isinstance(item, dict) or not re.fullmatch(r'[A-Za-z0-9_-]{10,}', item.get('id') or ''):
             raise ValueError(f'{kind}: Google Drive upload/link is not ready in images.json')
+        if module2 and kind in MODULE2_ROLES:
+            h = hardware.validate(kind, item.get('hardware'))
+            if h.get('efi_type') and kind + '_efi' not in data:
+                raise ValueError(kind + ': exported EFI image is missing')
+        if module2 and kind == 'br_fw_efi' and not data['br_fw']['hardware'].get('efi_type'):
+            raise ValueError('Unexpected EFI image without hardware metadata')
+        if item.get('bytes') is not None and (not isinstance(item['bytes'], int) or item['bytes'] <= 0):
+            raise ValueError(kind + ': invalid file size')
+        if item.get('virtual_size') is not None and (not isinstance(item['virtual_size'], int) or item['virtual_size'] <= 0):
+            raise ValueError(kind + ': invalid virtual size')
         filename = item.get('file', '')
         suffix = '.txt' if kind.endswith('_config') else '.qcow2'
         if not re.fullmatch(r'[A-Za-z0-9_.-]+', filename) or not filename.endswith(suffix):
@@ -129,8 +146,10 @@ def capacity(path, storage_type):
              'ideco', 'server', 'ideco_efi']
     if set(verified) == ROLE_KINDS:
         kinds = ['isp', 'hq_rtr', 'hq_sw', 'hq_srv', 'hq_cli', 'br_rtr', 'br_fw', 'br_srv', 'br_fw_efi']
+    if set(verified) in (MODULE2_ROLES, MODULE2_ROLES | {'br_fw_efi'}):
+        kinds = [k for k in verified if k in MODULE2_ROLES or k == 'br_fw_efi']
     virtual = sum(max(verified[k]['virtual_size'], 10*1024**3)
-                  if k in ('router', 'hq_rtr', 'br_rtr') else verified[k]['virtual_size'] for k in kinds)
+                  if k == 'router' or (k in ('hq_rtr', 'br_rtr') and set(verified) == ROLE_KINDS) else verified[k]['virtual_size'] for k in kinds)
     if storage_type == 'lvmthin':
         initial = sum(verified[k]['allocated_bytes'] for k in kinds)
         reserve = max(10*1024**3, (initial+3)//4)
@@ -156,7 +175,7 @@ def inspect(manifest, root, state):
                 raise ValueError(f'{kind}: standalone, unencrypted qcow2 required')
             subprocess.run(['qemu-img', 'check', str(path)], check=True)
             size = data['virtual-size']
-            if kind.endswith('_efi') and not 1024**2 <= size <= 16 * 1024**2:
+            if kind.endswith('_efi') and not 128*1024 <= size <= 16 * 1024**2:
                 raise ValueError('Unexpected EFI virtual disk size')
             if not kind.endswith('_efi') and size < 1024**3:
                 raise ValueError(f'{kind}: unexpectedly small system disk')
@@ -176,8 +195,9 @@ if __name__ == '__main__':
             manifest = load_manifest(sys.argv[2])
             if command == 'validate':
                 if len(sys.argv) > 3:
-                    expected = KINDS if sys.argv[3] == 'base' else ROLE_KINDS
-                    if set(manifest) != expected: raise ValueError('Manifest keys do not match the chosen profile')
+                    profile = sys.argv[3]
+                    expected = [KINDS] if profile == 'base' else ([MODULE2_ROLES, MODULE2_ROLES | {'br_fw_efi'}] if profile == 'module2' else [ROLE_KINDS])
+                    if set(manifest) not in expected: raise ValueError('Manifest keys do not match the chosen profile')
                 print('Manifest ready')
             elif command in ('download', 'inspect'):
                 globals()[command](manifest, Path(sys.argv[3]), Path(sys.argv[4]))

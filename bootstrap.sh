@@ -9,6 +9,13 @@ cd /root/proxmox-demo-lab
 tmp=$(mktemp -d)
 trap 'rm -rf -- "$tmp"' EXIT
 fetch() { curl --fail --show-error --location "$base/$1" -o "$tmp/$1"; }
+fetch_module2() {
+ [[ ! -f module2-images.json ]] || return 0
+ if curl --fail --silent --show-error --location "$base/module2-images.json" -o "$tmp/module2-images.json"; then
+  python3 -m json.tool "$tmp/module2-images.json" >/dev/null
+  mv -- "$tmp/module2-images.json" module2-images.json
+ fi
+}
 case "${1:---plan}" in
  --menu)
   shift
@@ -37,7 +44,7 @@ case "${1:---plan}" in
    printf '1 — Показать план и ресурсы (без создания ВМ)\n'
    printf '2 — Создать стенд из готовых qcow2\n'
    printf '3 — Настроить VMID, мосты и хранилище\n'
-   printf '4 — Выбрать профиль: базовые ОС / готовый первый модуль\n'
+   printf '4 — Выбрать профиль: базовые ОС / стенд второго модуля\n'
    printf '5 — Проверить созданный стенд\n'
    printf '6 — Очистить скачанные образы\n'
    printf '7 — Удалить созданный стенд\n'
@@ -56,13 +63,14 @@ case "${1:---plan}" in
      menu_prompt 'Каталог кэша образов' "$menu_images" menu_images
      ;;
     4)
-     echo '1 — Базовые установленные ОС; 2 — Настроенные образы первого модуля'
+     echo '1 — Базовые установленные ОС; 2 — Стенд второго модуля (настройки первого модуля сохранены)'
      read -r -p 'Профиль: ' selected_profile || exit 0
      case "$selected_profile" in
       1) menu_profile=base;;
       2)
-       if [[ -f module1-images.json ]]; then menu_profile=module1
-       else echo 'Профиль ещё не подключён. Заполни /root/proxmox-demo-lab/module1-images.json отдельными образами всех восьми настроенных ВМ (см. README).'; fi;;
+       fetch_module2
+       if [[ -f module2-images.json ]]; then menu_profile=module2
+       else echo 'Профиль ещё не подключён. Заполни /root/proxmox-demo-lab/module2-images.json отдельными образами всех восьми настроенных ВМ (см. README).'; fi;;
       *) echo 'Выбери 1 или 2.';;
      esac;;
     5|7|8)
@@ -84,24 +92,28 @@ case "${1:---plan}" in
   for arg in "$@"; do
    [[ $arg != --plan && $arg != --apply ]] || { echo 'Choose --deploy-plan or --deploy without extra mode flags'; exit 2; }
   done
-  for file in deploy.sh image-manifest.py lab-manager.py detect-uplink.py select-ranges.py images.json module1-images.example.json; do fetch "$file"; done
+  for file in deploy.sh image-manifest.py lab-manager.py detect-uplink.py select-ranges.py images.json module1-images.example.json module2-images.example.json hardware-profile.py export-module2.py; do fetch "$file"; done
   bash -n "$tmp/deploy.sh"
+  for file in hardware-profile.py export-module2.py; do python3 -c 'import ast,sys; ast.parse(open(sys.argv[1]).read())' "$tmp/$file"; done
   python3 -c 'import ast,sys; ast.parse(open(sys.argv[1]).read())' "$tmp/image-manifest.py"
   python3 -c 'import ast,sys; ast.parse(open(sys.argv[1]).read())' "$tmp/detect-uplink.py"
   python3 -c 'import ast,sys; ast.parse(open(sys.argv[1]).read())' "$tmp/select-ranges.py"
   python3 -c 'import ast,sys; ast.parse(open(sys.argv[1]).read())' "$tmp/lab-manager.py"
   python3 -m json.tool "$tmp/module1-images.example.json" >/dev/null
+  python3 -m json.tool "$tmp/module2-images.example.json" >/dev/null
   python3 -m json.tool "$tmp/images.json" >/dev/null
-  for file in deploy.sh image-manifest.py lab-manager.py detect-uplink.py select-ranges.py images.json module1-images.example.json; do mv -- "$tmp/$file" "$file"; done
+  for file in deploy.sh image-manifest.py lab-manager.py detect-uplink.py select-ranges.py images.json module1-images.example.json module2-images.example.json hardware-profile.py export-module2.py; do mv -- "$tmp/$file" "$file"; done
+  if [[ " $* " == *" module2 "* ]]; then fetch_module2; fi
   bash ./deploy.sh "$mode" "$@"
   ;;
  --manage)
   shift
-  for file in lab-manager.py image-manifest.py images.json module1-images.example.json; do fetch "$file"; done
+  for file in lab-manager.py image-manifest.py images.json module1-images.example.json module2-images.example.json hardware-profile.py export-module2.py; do fetch "$file"; done
   for file in lab-manager.py image-manifest.py; do python3 -c 'import ast,sys; ast.parse(open(sys.argv[1]).read())' "$tmp/$file"; done
+  python3 -m json.tool "$tmp/module2-images.example.json" >/dev/null
   python3 -m json.tool "$tmp/images.json" >/dev/null
   python3 -m json.tool "$tmp/module1-images.example.json" >/dev/null
-  for file in lab-manager.py image-manifest.py images.json module1-images.example.json; do mv -- "$tmp/$file" "$file"; done
+  for file in lab-manager.py image-manifest.py images.json module1-images.example.json module2-images.example.json hardware-profile.py export-module2.py; do mv -- "$tmp/$file" "$file"; done
   python3 ./lab-manager.py "$@"
   ;;
  --plan|--apply)

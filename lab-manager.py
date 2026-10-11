@@ -366,12 +366,12 @@ def clean_cache(args):
     root = Path(args.image_dir)
     if not root.is_absolute() or root.is_symlink() or root.resolve() == Path('/') or not root.is_dir():
         raise ValueError('Choose an existing absolute cache directory; symlinks are not supported')
-    manifests = [images.load_manifest(HERE / 'images.json')]
-    module = HERE / 'module1-images.json'
-    if module.exists(): manifests.append(images.load_manifest(module))
+    manifests = [(images.load_manifest(HERE / 'images.json'), root)]
+    for profile in ('module1', 'module2'):
+        module = HERE / (profile + '-images.json')
+        if module.exists(): manifests.append((images.load_manifest(module), root / profile))
     files = []
-    for manifest in manifests:
-        directory = root if set(manifest) == images.KINDS else root / 'module1'
+    for manifest, directory in manifests:
         if directory.is_symlink(): raise ValueError('Symlink cache directory is not supported')
         for item in manifest.values():
             for suffix in ('', '.demo.json', '.demo-download'):

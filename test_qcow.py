@@ -70,8 +70,12 @@ class Checks(unittest.TestCase):
  def run_deploy(self,occupied=False,low_space=False,uplink='vmbr0',explicit=False,invalid_route=False,automatic=False,module=False):
   with tempfile.TemporaryDirectory() as t:
    t=Path(t);bins=t/'bin';bins.mkdir();(t/'net'/uplink/'bridge').mkdir(parents=True);(t/'interfaces').write_text('auto lo\n'+('auto vmbr201\niface vmbr201 inet manual\n' if automatic else ''))
-   verified={k:{'path':str(t/(k+'.qcow2')),'virtual_size':32*1024**3,'allocated_bytes':2*1024**3} for k in (m.ROLE_KINDS if module else m.KINDS)};(t/'verified.json').write_text(json.dumps(verified))
-   if module:(t/'module1-images.json').write_text(json.dumps({k:{'id':'A'*20,'file':k+('.txt' if k.endswith('_config') else '.qcow2')} for k in m.ROLE_KINDS}))
+   verified={k:{'path':str(t/(k+'.qcow2')),'virtual_size':32*1024**3,'allocated_bytes':2*1024**3} for k in ((m.MODULE2_ROLES | {'br_fw_efi'}) if module == 'module2' else (m.ROLE_KINDS if module else m.KINDS))};(t/'verified.json').write_text(json.dumps(verified))
+   if module == 'module2':
+    md=json.loads((ROOT/'module2-images.example.json').read_text())
+    for item in md.values():item['id']='A'*20
+    (t/'module2-images.json').write_text(json.dumps(md))
+   elif module:(t/'module1-images.json').write_text(json.dumps({k:{'id':'A'*20,'file':k+('.txt' if k.endswith('_config') else '.qcow2')} for k in m.ROLE_KINDS}))
    def exe(name,text):p=bins/name;p.write_text(text);p.chmod(0o755)
    exe('qm', '''#!/usr/bin/env python3
 import sys,os,json,uuid
@@ -86,7 +90,7 @@ if a[0]=='create':
 if a[0]=='set':
  for k,v in zip(a[2::2],a[3::2]):
   d[id][k.lstrip('-')]=v
-  if k in ('--scsi0','--sata0','--efidisk0'):d[id].pop('unused0',None)
+  if k in ('--scsi0','--sata0','--ide0','--efidisk0'):d[id].pop('unused0',None)
 if a[0]=='importdisk':d[id]['unused0']='local-lvm:vm-'+id+'-disk-'+('1' if 'ideco_efi' in a[2] or 'br_fw_efi' in a[2] else '0')
 if a[0]=='config':
  for k,v in d[id].items():print(k+': '+v)
@@ -100,16 +104,17 @@ p.write_text(json.dumps(d))
    s=(ROOT/'deploy.sh').read_text().replace('[[ $EUID == 0 ]]', '[[ 1 == 1 ]]').replace('/sys/class/net',str(t/'net')).replace('/etc/network/interfaces',str(t/'interfaces')).replace('/run/lock/proxmox-demo-deploy.lock',str(t/'lock')).replace('/root/demo-deploy.',str(t/'demo-deploy.'))
    start=s.index('# Validate the manifest');end=s.index('storage_row=')
    journal=t/'demo-deploy.ABCDEF12';journal.mkdir();(journal/'verified.json').write_text((t/'verified.json').read_text())
-   s=s[:start]+f'state="{journal}"\nlog="$state/deploy.log"\npython3 "$here/lab-manager.py" init --journal "$state" --profile {"module1" if module else "base"}\n'+s[end:]
+   s=s[:start]+f'state="{journal}"\nlog="$state/deploy.log"\npython3 "$here/lab-manager.py" init --journal "$state" --profile {"module2" if module == "module2" else ("module1" if module else "base")}\n'+s[end:]
    s=s.replace('python3 "$here/image-manifest.py" identity "$(image_path "$config_kind")"',"printf '%s\\n' '7ec0f39e-4da7-4d58-841b-1d940259092e' 'BC:24:11:90:45:4A'")
    (t/'image-manifest.py').write_text((ROOT/'image-manifest.py').read_text())
+   (t/'hardware-profile.py').write_text((ROOT/'hardware-profile.py').read_text())
    (t/'detect-uplink.py').write_text((ROOT/'detect-uplink.py').read_text())
    (t/'select-ranges.py').write_text((ROOT/'select-ranges.py').read_text().replace('/sys/class/net',str(t/'net')).replace('/etc/network/interfaces',str(t/'interfaces')))
    manager=(ROOT/'lab-manager.py').read_text().replace("HOME = Path('/root')",f'HOME = Path({str(t)!r})').replace("INTERFACES = Path('/etc/network/interfaces')",f'INTERFACES = Path({str(t/"interfaces")!r})').replace('if os.geteuid() != 0:', 'if False:')
    (t/'lab-manager.py').write_text(manager)
    p=t/'deploy.sh';p.write_text(s)
    env=dict(os.environ,PATH=str(bins)+':'+os.environ['PATH'],STATE=str(t/'qm.json'),LOG=str(t/'calls'))
-   r=subprocess.run(['bash',str(p),'--apply']+(['--profile','module1'] if module else [])+([] if automatic else ['--base-id','200','--bridge-base','201'])+(['--uplink',uplink] if explicit else []),env=env,text=True,capture_output=True,errors="replace")
+   r=subprocess.run(['bash',str(p),'--apply']+(['--profile','module2' if module == 'module2' else 'module1'] if module else [])+([] if automatic else ['--base-id','200','--bridge-base','201'])+(['--uplink',uplink] if explicit else []),env=env,text=True,capture_output=True,errors="replace")
    calls=[json.loads(x) for x in (t/'calls').read_text().splitlines()] if (t/'calls').exists() else []
    if invalid_route and not explicit:
     self.assertNotEqual(r.returncode,0);self.assertIn('Choose a bridge explicitly',r.stderr);self.assertEqual(calls,[]);self.assertEqual((t/'interfaces').read_text(),'auto lo\n')
@@ -126,17 +131,27 @@ p.write_text(json.dumps(d))
     if automatic:self.assertIn('bridge=vmbr202,firewall=0',json.dumps(calls))
     fw=next(a for a in creates if a[1]==str(first+6));self.assertEqual(fw[fw.index('--memory')+1],'6144');self.assertEqual(fw[fw.index('--cores')+1],'4')
     inventory=json.loads((journal/'lab.json').read_text());self.assertTrue(inventory['complete']);self.assertEqual(len(inventory['vms']),8);self.assertEqual(len(inventory['bridges']),9)
-    if module:
+    if module == 'module2':
+     self.assertEqual(inventory['profile'],'module2')
+     fw=inventory['vms'][6]
+     self.assertIn('ide0',fw['volumes'])
+     self.assertIn('bridge=vmbr206',fw['networks']['net0'])
+     self.assertIn('e1000=BC:24:11:C3:F0:C0',fw['networks']['net0'])
+     self.assertIn('bridge=vmbr207',fw['networks']['net1'])
+     self.assertTrue(any('--efidisk0' in a and 'efitype=2m' in a[-1] for a in calls))
+     self.assertFalse(any(a[0]=='resize' for a in calls))
+    elif module:
      self.assertEqual(inventory['profile'],'module1')
      self.assertEqual({Path(a[2]).name for a in calls if a[0]=='importdisk'}, {k+'.qcow2' for k in m.ROLE_KINDS if not k.endswith('_config')})
     self.assertEqual(sum(a[0]=='importdisk' for a in calls),9)
-    self.assertTrue(any('--efidisk0' in a and 'efitype=4m' in a[-1] for a in calls))
+    if module != 'module2':self.assertTrue(any('--efidisk0' in a and 'efitype=4m' in a[-1] for a in calls))
     self.assertTrue(any('--scsi0' in a and a[1]==str(first+3) for a in calls))
     self.assertFalse(any(a[0] in ('start','destroy','shutdown') for a in calls))
     self.assertEqual((t/'interfaces').read_text().count('bridge-ports none'),9)
     external=[a for a in calls if any('bridge='+uplink+',' in v for v in a)]
-    self.assertEqual(len(external),1);self.assertEqual(external[0][1:3],[str(first),'--net0'])
+    self.assertEqual(len(external),1);self.assertEqual(external[0][1],str(first));self.assertIn('--net0',external[0])
     self.assertNotIn('gateway',(t/'interfaces').read_text());self.assertNotIn('address',(t/'interfaces').read_text())
+ def test_module2_hardware_and_topology_preserved(self):self.run_deploy(module='module2')
  def test_full_import(self):self.run_deploy()
  def test_insufficient_thin_space_no_changes(self):self.run_deploy(low_space=True)
  def test_occupied_ids_no_changes(self):self.run_deploy(True)
@@ -146,7 +161,7 @@ p.write_text(json.dumps(d))
  def test_full_module_import_uses_distinct_disks(self):self.run_deploy(module=True)
  def test_missing_module_stops_before_any_host_commands(self):
   r=subprocess.run(['bash',str(ROOT/'deploy.sh'),'--plan','--profile','module1'],text=True,capture_output=True)
-  self.assertNotEqual(r.returncode,0);self.assertIn('Module 1 images are not configured',r.stderr)
+  self.assertNotEqual(r.returncode,0);self.assertIn('Profile module1 images are not configured',r.stderr)
  def test_automatic_ranges_skip_existing(self):self.run_deploy(occupied=True,automatic=True)
  def test_range_selection_gaps_and_bounds(self):
   self.assertEqual(ranges.first_free({200,205,214,900},200,8,999999999),206)
@@ -165,7 +180,7 @@ p.write_text(json.dumps(d))
   for entry,expected in [('1\n0\n',['--base-id','auto','--bridge-base','auto']),('3\n300\n301\n\n\n\n1\n0\n',['--base-id','300','--bridge-base','301'])]:
    with self.subTest(entry=entry), tempfile.TemporaryDirectory() as t:
     t=Path(t);bins=t/'bin';bins.mkdir();sources=t/'source';sources.mkdir()
-    for f in ['image-manifest.py','lab-manager.py','detect-uplink.py','select-ranges.py','images.json','module1-images.example.json']:(sources/f).write_text((ROOT/f).read_text())
+    for f in ['image-manifest.py','lab-manager.py','detect-uplink.py','select-ranges.py','images.json','module1-images.example.json','module2-images.example.json','hardware-profile.py','export-module2.py']:(sources/f).write_text((ROOT/f).read_text())
     (sources/'deploy.sh').write_text('#!/bin/bash\nprintf "%s\\n" "$@" > "$MENU_LOG"\n')
     (bins/'qm').write_text('#!/bin/sh\nexit 0\n');(bins/'qm').chmod(0o755)
     (bins/'curl').write_text('#!/usr/bin/env python3\nimport os,sys,shutil\na=sys.argv[1:]\nshutil.copy(os.environ["MENU_SOURCE"]+"/"+a[a.index("-o")-1].split("/")[-1],a[a.index("-o")+1])\n');(bins/'curl').chmod(0o755)

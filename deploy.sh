@@ -3,7 +3,7 @@ set -Eeuo pipefail
 umask 077
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 mode=plan; base=auto; bridgebase=auto; storage=local-lvm; uplink=auto; image_dir=/var/lib/vz/demo-images; profile=base
-usage() { echo 'deploy.sh [--plan|--apply] [--base-id auto|200] [--bridge-base auto|201] [--storage local-lvm] [--uplink auto|vmbrN] [--image-dir /var/lib/vz/demo-images] [--profile base|module1]'; }
+usage() { echo 'deploy.sh [--plan|--apply] [--base-id auto|200] [--bridge-base auto|201] [--storage local-lvm] [--uplink auto|vmbrN] [--image-dir /var/lib/vz/demo-images] [--profile base|module2]'; }
 fail() { echo "ERROR: $*" >&2; exit 1; }
 while (($#)); do
  case "$1" in
@@ -19,14 +19,15 @@ done
 [[ $base == auto ]] || ((base>=100 && base<=999999992)) || fail 'VMIDs out of range'
 [[ $bridgebase == auto ]] || ((bridgebase<=9991)) || fail 'Bridge IDs out of range'
 [[ $storage =~ ^[A-Za-z][A-Za-z0-9_-]*$ && ( $uplink == auto || $uplink =~ ^vmbr[0-9]+$ ) ]] || fail 'Invalid storage or uplink'
-[[ $profile == base || $profile == module1 ]] || fail 'Unknown profile'
+[[ $profile == base || $profile == module1 || $profile == module2 ]] || fail 'Unknown profile'
 manifest=$here/images.json
-if [[ $profile == module1 ]]; then
- manifest=$here/module1-images.json
- [[ -f $manifest ]] || fail 'Module 1 images are not configured. Fill module1-images.json using module1-images.example.json first.'
- image_dir=$image_dir/module1
+if [[ $profile == module1 || $profile == module2 ]]; then
+ manifest=$here/${profile}-images.json
+ [[ -f $manifest ]] || fail "Profile $profile images are not configured. Fill ${profile}-images.json using the matching example first."
+ image_dir=$image_dir/$profile
  python3 "$here/image-manifest.py" validate "$manifest" "$profile"
 fi
+
 if [[ $mode == apply ]]; then
 [[ $EUID == 0 ]] || fail 'Run in Proxmox Shell as root'
 for cmd in qm pvesm pvesh qemu-img python3 curl ifup flock; do
@@ -53,6 +54,24 @@ disks=(32 10 32 32 32 10 160 32)
 kinds=(jeos router jeos server cli router ideco server)
 br() { echo "vmbr$((bridgebase+$1-1))"; }
 nics=("$uplink,$(br 1),$(br 2)" "$(br 8),$(br 1),$(br 3)" "$(br 3),$(br 4),$(br 5)" "$(br 4)" "$(br 5)" "$(br 9),$(br 2),$(br 6)" "$(br 7),$(br 6)" "$(br 7)")
+if [[ $profile == module2 ]]; then
+ for i in "${!roles[@]}"; do
+  role_key=$(printf '%s' "${roles[i]}" | tr '[:upper:]-' '[:lower:]_')
+  nics[i]=$(python3 - "$manifest" "$role_key" "$bridgebase" "$uplink" <<'PYNET'
+import json,sys
+h=json.load(open(sys.argv[1]))[sys.argv[2]]['hardware']
+print(','.join(sys.argv[4] if n['link']=='uplink' else 'vmbr'+str(int(sys.argv[3])+n['link']-1) for n in h['nics']))
+PYNET
+)
+  actual_disk=$(python3 - "$manifest" "$role_key" <<'PYSIZE'
+import json,sys
+x=json.load(open(sys.argv[1]))[sys.argv[2]].get('virtual_size')
+print((x+1024**3-1)//1024**3 if x else '')
+PYSIZE
+)
+  if [[ -n $actual_disk ]]; then disks[i]=$actual_disk; fi
+ done
+fi
 [[ ,$(IFS=,; echo "${nics[*]}"), == *",$uplink,"* ]] || fail 'Invalid uplink'
 for n in {1..9}; do [[ $(br "$n") != "$uplink" ]] || fail 'Bridge range overlaps uplink'; done
 printf 'NEW LAB: profile=%s storage=%s uplink=%s\n' "$profile" "$storage" "$uplink"
@@ -61,7 +80,12 @@ for i in "${!roles[@]}"; do
  printf '%-7s %-24s %-7s %-7s %-7s %s\n' "$((base+i))" "${roles[i]}" "${ram[i]}" "${cores[i]}" "${disks[i]}" "${nics[i]}"
 done
 echo 'All operating systems: import installed standalone qcow2 images; no ISO installation.'
-echo 'ALT: SeaBIOS / VirtIO SCSI. Ideco: q35 / UEFI with the exported EFI disk.'
+if [[ $profile == module2 ]]; then
+ echo 'Стенд второго модуля: сохраняются контроллеры дисков, BIOS, модели, MAC и порядок карт из настроенных образов.'
+ echo 'Source ISP and its restored copy must not run simultaneously on the same uplink (preserved MAC/DHCP identity).'
+else
+ echo 'ALT: SeaBIOS / VirtIO SCSI. Ideco: q35 / UEFI with the exported EFI disk.'
+fi
 echo 'VM names and hardware are configured; guest passwords and module settings come from your images.'
 echo 'ISP net0 uses the existing uplink bridge. Host IP/gateway are NOT copied; configure DHCP or a unique static address inside ISP.'
 echo 'All 8 VMs need 18 GiB RAM plus host memory; they will NOT all start automatically.'
@@ -147,13 +171,30 @@ for i in "${!roles[@]}"; do
  printf '%s\t%s\n' "$id" "$vm_name" >> "$state/created.tsv"
  model=virtio; [[ $kind != router ]] || model=e1000
  IFS=, read -ra bridges <<< "${nics[i]}"
- for n in "${!bridges[@]}"; do qm set "$id" "--net$n" "$model,bridge=${bridges[n]},firewall=0"; done
+ if [[ $profile != module2 ]]; then
+  for n in "${!bridges[@]}"; do qm set "$id" "--net$n" "$model,bridge=${bridges[n]},firewall=0"; done
+ fi
  image_kind=$kind
- if [[ $profile == module1 ]]; then image_kind=$(printf '%s' "$role" | tr '[:upper:]-' '[:lower:]_'); fi
+ if [[ $profile == module1 || $profile == module2 ]]; then image_kind=$(printf '%s' "$role" | tr '[:upper:]-' '[:lower:]_'); fi
  image=$(image_path "$image_kind")
  volume=$(import_volume "$id" "$image")
  python3 "$here/lab-manager.py" record-vm --journal "$state" --vmid "$id"
- if [[ $kind == router ]]; then
+ if [[ $profile == module2 ]]; then
+  efi_volume=''
+  has_efi=$(python3 - "$manifest" "$image_kind" <<'PYEFI'
+import json,sys
+print('yes' if json.load(open(sys.argv[1]))[sys.argv[2]]['hardware'].get('efi_type') else 'no')
+PYEFI
+)
+  if [[ $has_efi == yes ]]; then
+   efi_volume=$(import_volume "$id" "$(image_path "${image_kind}_efi")")
+   python3 "$here/lab-manager.py" record-vm --journal "$state" --vmid "$id"
+  fi
+  hardware_text=$(python3 "$here/hardware-profile.py" "$manifest" "$image_kind" "$volume" "$bridgebase" "$uplink" "$efi_volume")
+  hardware_args=()
+  while IFS= read -r field; do hardware_args+=("$field"); done <<< "$hardware_text"
+  qm set "$id" "${hardware_args[@]}"
+ elif [[ $kind == router ]]; then
   qm set "$id" --sata0 "$volume" --boot order=sata0
   size=$(qemu-img info --output=json "$image" | python3 -c 'import json,sys;print(json.load(sys.stdin)["virtual-size"])')
   ((size>=10737418240)) || qm resize "$id" sata0 10G

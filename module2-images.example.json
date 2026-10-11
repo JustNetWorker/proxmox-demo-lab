@@ -1,0 +1,205 @@
+{
+  "isp": {
+    "id": null,
+    "file": "isp.qcow2",
+    "hardware": {
+      "bios": "seabios",
+      "machine": "pc",
+      "disk_slot": "scsi0",
+      "scsihw": "virtio-scsi-single",
+      "uuid": "0b29745d-d4a4-447f-9280-5f6948616a79",
+      "nics": [
+        {
+          "model": "virtio",
+          "mac": "BC:24:11:34:4E:EB",
+          "link": "uplink"
+        },
+        {
+          "model": "virtio",
+          "mac": "BC:24:11:97:37:3D",
+          "link": 1
+        },
+        {
+          "model": "virtio",
+          "mac": "BC:24:11:3A:DC:CF",
+          "link": 2
+        }
+      ],
+      "serial": false
+    }
+  },
+  "hq_rtr": {
+    "id": null,
+    "file": "hq-rtr.qcow2",
+    "hardware": {
+      "bios": "seabios",
+      "machine": "pc",
+      "disk_slot": "ide0",
+      "scsihw": "virtio-scsi-single",
+      "uuid": "7f67b62f-791a-4380-8afd-2576620576da",
+      "nics": [
+        {
+          "model": "e1000",
+          "mac": "BC:24:11:7E:72:26",
+          "link": 8
+        },
+        {
+          "model": "e1000",
+          "mac": "BC:24:11:BE:57:E5",
+          "link": 1
+        },
+        {
+          "model": "e1000",
+          "mac": "BC:24:11:65:A5:1D",
+          "link": 3
+        }
+      ],
+      "serial": false
+    }
+  },
+  "hq_sw": {
+    "id": null,
+    "file": "hq-sw.qcow2",
+    "hardware": {
+      "bios": "seabios",
+      "machine": "pc",
+      "disk_slot": "scsi0",
+      "scsihw": "virtio-scsi-single",
+      "uuid": "071f5ce8-5e60-4936-9f39-5851ecfcd239",
+      "nics": [
+        {
+          "model": "virtio",
+          "mac": "BC:24:11:BC:1C:CB",
+          "link": 3
+        },
+        {
+          "model": "virtio",
+          "mac": "BC:24:11:08:AE:89",
+          "link": 4
+        },
+        {
+          "model": "virtio",
+          "mac": "BC:24:11:D1:83:74",
+          "link": 5
+        }
+      ],
+      "serial": true
+    }
+  },
+  "hq_srv": {
+    "id": null,
+    "file": "hq-srv.qcow2",
+    "hardware": {
+      "bios": "seabios",
+      "machine": "pc",
+      "disk_slot": "scsi0",
+      "scsihw": "virtio-scsi-single",
+      "uuid": "8587e124-84f5-4bb3-8d99-3f04fdc77e0f",
+      "nics": [
+        {
+          "model": "virtio",
+          "mac": "BC:24:11:E7:D4:50",
+          "link": 4
+        }
+      ],
+      "serial": true
+    }
+  },
+  "hq_cli": {
+    "id": null,
+    "file": "hq-cli.qcow2",
+    "hardware": {
+      "bios": "seabios",
+      "machine": "pc",
+      "disk_slot": "scsi0",
+      "scsihw": "virtio-scsi-single",
+      "uuid": "94e8048a-130f-4aae-a599-c9bf12512a7b",
+      "nics": [
+        {
+          "model": "virtio",
+          "mac": "BC:24:11:0A:6E:72",
+          "link": 5
+        }
+      ],
+      "serial": false
+    }
+  },
+  "br_rtr": {
+    "id": null,
+    "file": "br-rtr.qcow2",
+    "hardware": {
+      "bios": "seabios",
+      "machine": "pc",
+      "disk_slot": "ide0",
+      "scsihw": "virtio-scsi-single",
+      "uuid": "3020c5ca-d61f-4972-80e4-32804d7e0d51",
+      "nics": [
+        {
+          "model": "e1000",
+          "mac": "BC:24:11:7B:D1:0D",
+          "link": 9
+        },
+        {
+          "model": "e1000",
+          "mac": "BC:24:11:C6:8A:0B",
+          "link": 2
+        },
+        {
+          "model": "e1000",
+          "mac": "BC:24:11:C2:D8:3E",
+          "link": 6
+        }
+      ],
+      "serial": false
+    }
+  },
+  "br_fw": {
+    "id": null,
+    "file": "br-fw.qcow2",
+    "hardware": {
+      "bios": "ovmf",
+      "machine": "pc",
+      "disk_slot": "ide0",
+      "scsihw": "virtio-scsi-single",
+      "uuid": "0956b4a0-7fc3-4679-9776-bd387aae177a",
+      "nics": [
+        {
+          "model": "e1000",
+          "mac": "BC:24:11:C3:F0:C0",
+          "link": 6
+        },
+        {
+          "model": "e1000",
+          "mac": "BC:24:11:04:C1:6F",
+          "link": 7
+        }
+      ],
+      "serial": false,
+      "efi_type": "2m",
+      "efi_origin": "default-template: source VM had no persistent EFI disk"
+    }
+  },
+  "br_srv": {
+    "id": null,
+    "file": "br-srv.qcow2",
+    "hardware": {
+      "bios": "seabios",
+      "machine": "pc",
+      "disk_slot": "scsi0",
+      "scsihw": "virtio-scsi-single",
+      "uuid": "e2bfb485-f8ff-4297-bfd0-e603b248198e",
+      "nics": [
+        {
+          "model": "virtio",
+          "mac": "BC:24:11:5C:4E:25",
+          "link": 7
+        }
+      ],
+      "serial": true
+    }
+  },
+  "br_fw_efi": {
+    "id": null,
+    "file": "br-fw-efi.qcow2"
+  }
+}
