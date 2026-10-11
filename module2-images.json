@@ -1,0 +1,232 @@
+{
+  "isp": {
+    "id": "1mGSZ-PPvKYMyLZrqtZhoJ4KOOM_-4hBE",
+    "file": "isp.qcow2",
+    "sha256": "ff7b6a1d604f84f19ae541b1a6a3bd4fd63e60e81d4f37a091eb1a2b574a98f9",
+    "bytes": 1501429760,
+    "hardware": {
+      "bios": "seabios",
+      "machine": "pc",
+      "disk_slot": "scsi0",
+      "scsihw": "virtio-scsi-single",
+      "uuid": "0b29745d-d4a4-447f-9280-5f6948616a79",
+      "nics": [
+        {
+          "model": "virtio",
+          "mac": "BC:24:11:34:4E:EB",
+          "link": "uplink"
+        },
+        {
+          "model": "virtio",
+          "mac": "BC:24:11:97:37:3D",
+          "link": 1
+        },
+        {
+          "model": "virtio",
+          "mac": "BC:24:11:3A:DC:CF",
+          "link": 2
+        }
+      ],
+      "serial": false
+    },
+    "virtual_size": 34359738368
+  },
+  "hq_rtr": {
+    "id": "1JF1SSW0bBVClHjNXKliabzq0CDb9wpEO",
+    "file": "hq-rtr.qcow2",
+    "sha256": "2de68eed753a84018c4ee78b264f5f570b50a41ab1281dba37c04f70d844322f",
+    "bytes": 1392765952,
+    "hardware": {
+      "bios": "seabios",
+      "machine": "pc",
+      "disk_slot": "ide0",
+      "scsihw": "virtio-scsi-single",
+      "uuid": "7f67b62f-791a-4380-8afd-2576620576da",
+      "nics": [
+        {
+          "model": "e1000",
+          "mac": "BC:24:11:7E:72:26",
+          "link": 8
+        },
+        {
+          "model": "e1000",
+          "mac": "BC:24:11:BE:57:E5",
+          "link": 1
+        },
+        {
+          "model": "e1000",
+          "mac": "BC:24:11:65:A5:1D",
+          "link": 3
+        }
+      ],
+      "serial": false
+    },
+    "virtual_size": 6442450944
+  },
+  "hq_sw": {
+    "id": "1tlHkjRTDXGWohfUTU4Ez_w1nHSHWhGrb",
+    "file": "hq-sw.qcow2",
+    "sha256": "97ef59554c19786d855558f06c30210bcef371d276b003484b79c81c85fe3594",
+    "bytes": 2586376192,
+    "hardware": {
+      "bios": "seabios",
+      "machine": "pc",
+      "disk_slot": "scsi0",
+      "scsihw": "virtio-scsi-single",
+      "uuid": "071f5ce8-5e60-4936-9f39-5851ecfcd239",
+      "nics": [
+        {
+          "model": "virtio",
+          "mac": "BC:24:11:BC:1C:CB",
+          "link": 3
+        },
+        {
+          "model": "virtio",
+          "mac": "BC:24:11:08:AE:89",
+          "link": 4
+        },
+        {
+          "model": "virtio",
+          "mac": "BC:24:11:D1:83:74",
+          "link": 5
+        }
+      ],
+      "serial": true
+    },
+    "virtual_size": 34359738368
+  },
+  "hq_srv": {
+    "id": "1YA17aln4ZrlbUAN4Y3nZp_sSEOInmBoh",
+    "file": "hq-srv.qcow2",
+    "sha256": "ad997fba0fb388d57d1dfaf8f301902d9cc96d0227d9be6533f266045291a015",
+    "bytes": 2440722944,
+    "hardware": {
+      "bios": "seabios",
+      "machine": "pc",
+      "disk_slot": "scsi0",
+      "scsihw": "virtio-scsi-single",
+      "uuid": "8587e124-84f5-4bb3-8d99-3f04fdc77e0f",
+      "nics": [
+        {
+          "model": "virtio",
+          "mac": "BC:24:11:E7:D4:50",
+          "link": 4
+        }
+      ],
+      "serial": true
+    },
+    "virtual_size": 34359738368
+  },
+  "hq_cli": {
+    "id": "1RQN6brGwaNSU0jUhBuBhplL9XIgojtFk",
+    "file": "hq-cli.qcow2",
+    "sha256": "2fc2d49b4ac71bb1bcdef685dc097aef180a036d8b15e8c16b251126414b9524",
+    "bytes": 7003242496,
+    "hardware": {
+      "bios": "seabios",
+      "machine": "pc",
+      "disk_slot": "scsi0",
+      "scsihw": "virtio-scsi-single",
+      "uuid": "94e8048a-130f-4aae-a599-c9bf12512a7b",
+      "nics": [
+        {
+          "model": "virtio",
+          "mac": "BC:24:11:0A:6E:72",
+          "link": 5
+        }
+      ],
+      "serial": false
+    },
+    "virtual_size": 55834574848
+  },
+  "br_rtr": {
+    "id": "19i42EyiGHUmA2ftifSqEB8qb8AO_tj36",
+    "file": "br-rtr.qcow2",
+    "sha256": "d2435615c7cde9216271de819b9c7c8bc4251484e564610477ed704f4db172e8",
+    "bytes": 1389292544,
+    "hardware": {
+      "bios": "seabios",
+      "machine": "pc",
+      "disk_slot": "ide0",
+      "scsihw": "virtio-scsi-single",
+      "uuid": "3020c5ca-d61f-4972-80e4-32804d7e0d51",
+      "nics": [
+        {
+          "model": "e1000",
+          "mac": "BC:24:11:7B:D1:0D",
+          "link": 9
+        },
+        {
+          "model": "e1000",
+          "mac": "BC:24:11:C6:8A:0B",
+          "link": 2
+        },
+        {
+          "model": "e1000",
+          "mac": "BC:24:11:C2:D8:3E",
+          "link": 6
+        }
+      ],
+      "serial": false
+    },
+    "virtual_size": 6442450944
+  },
+  "br_fw": {
+    "id": "1GNaKKbCZozZdpGb8IiU_xeORaRAfKuZk",
+    "file": "br-fw.qcow2",
+    "sha256": "a56c8b8c53f8d62ce216bd3e91066713f9614deb0917c233c841184d4bf63ddd",
+    "bytes": 6919028736,
+    "hardware": {
+      "bios": "ovmf",
+      "machine": "pc",
+      "disk_slot": "ide0",
+      "scsihw": "virtio-scsi-single",
+      "uuid": "0956b4a0-7fc3-4679-9776-bd387aae177a",
+      "nics": [
+        {
+          "model": "e1000",
+          "mac": "BC:24:11:C3:F0:C0",
+          "link": 6
+        },
+        {
+          "model": "e1000",
+          "mac": "BC:24:11:04:C1:6F",
+          "link": 7
+        }
+      ],
+      "serial": false,
+      "efi_type": "2m",
+      "efi_origin": "default-template: source VM had no persistent EFI disk"
+    },
+    "virtual_size": 177167400960
+  },
+  "br_fw_efi": {
+    "id": "1E0xzLjloT0LaQz8ykzRG_iaizvdXtycX",
+    "file": "br-fw-efi.qcow2",
+    "sha256": "4bef7604368019040c407787d5ad846dbf354eae5b57e7a3ad49af780e4e737b",
+    "bytes": 328192,
+    "virtual_size": 131072
+  },
+  "br_srv": {
+    "id": "1B-vYLNg8Qqwje4KZ9M1qL7G8rTxOXr8H",
+    "file": "br-srv.qcow2",
+    "sha256": "8ae5615dc6643432dc46ede3629dc68d1408ebd7d448a649f2a87cdc715ce52a",
+    "bytes": 2563930624,
+    "hardware": {
+      "bios": "seabios",
+      "machine": "pc",
+      "disk_slot": "scsi0",
+      "scsihw": "virtio-scsi-single",
+      "uuid": "e2bfb485-f8ff-4297-bfd0-e603b248198e",
+      "nics": [
+        {
+          "model": "virtio",
+          "mac": "BC:24:11:5C:4E:25",
+          "link": 7
+        }
+      ],
+      "serial": true
+    },
+    "virtual_size": 34359738368
+  }
+}
